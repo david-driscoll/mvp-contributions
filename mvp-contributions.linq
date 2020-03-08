@@ -24,20 +24,41 @@
 
 async Task Main()
 {
-	var mvpApiKey = "TODO";
+	// SETTINGS
+	// The subscription token obtained from https://mvpapi.portal.azure-api.net/
+	var mvpApiSubscription = "TODO";
+	// The bearer token obtained from https://mvpapi.portal.azure-api.net/
+	var mvpApiBearerToken = "";
+	// A github api token with repo permissions
 	var githubKey = "TODO";
+	// Organizations to scan for commits
+	var orgs = new[] { "org1", "org2" };
+	// Your github account
+	var author = "david-driscoll";
+	var commitsSince = new DateTimeOffset(2019, 4, 1, 00, 00, 00, TimeSpan.Zero);
+	// This is the value you want to group items by,
+	// it could be a single day, week, month or year.
+	string GetPivot(LocalDate date) {
+		// Month
+		//return date.Month + ":" date.Year;
+		// Week # in the year.
+		return WeekYearRules.Iso.GetWeekOfWeekYear(date).ToString() + ":" + date.Year;
+	}
+	
+	// These are orgs that you want to group as a one for contribution purposes because they have many repos you work across.
+	var treatOrgAsRepo = new HashSet<string>(new[] { "org-with-many-repos" }, StringComparer.OrdinalIgnoreCase);
+
+	// Script
+	
 	var store = new Octokit.Internal.InMemoryCredentialStore(new Credentials(githubKey));
 
-	var header = new ProductHeaderValue("personalmvpapiintegration", "2.0");
+	var header = new ProductHeaderValue($"{author}mvpapiintegration", "2.0");
 	var githubApi = new ObservableGitHubClient(header, store);
+	
+	var repos = orgs.Select(org => githubApi.Repository.GetAllForOrg(org)).Merge(4);
 
-	var rsgRepos = githubApi.Repository.GetAllForOrg("RocketSurgeonsGuild");
-	var omnisharpRepos = githubApi.Repository.GetAllForOrg("OmniSharp");
-
-	var repos = rsgRepos.Merge(omnisharpRepos).Concat(githubApi.Repository.GetAllForOrg("reactivex"));
-
-	var commitsForMe = repos.SelectMany(repo =>
-		githubApi.Repository.Commit.GetAll(repo.Owner.Login, repo.Name, new CommitRequest() { Since = new DateTimeOffset(2020, 3, 8, 00, 00, 00, TimeSpan.Zero), Author = "david-driscoll" })
+	var commitsForAuthor = repos.SelectMany(repo =>
+		githubApi.Repository.Commit.GetAll(repo.Owner.Login, repo.Name, new CommitRequest() { Since = commitsSince, Author = author  })
 			.OnErrorResumeNext(Observable.Empty<GitHubCommit>()),
 			(repository, commit) =>
 			{
@@ -47,14 +68,12 @@ async Task Main()
 	var httpClient = new HttpClient() { };
 
 
-	var c = commitsForMe
+	var c = commitsForAuthor
 		.Select(data => (date: LocalDateTime.FromDateTime(data.commit.Commit.Author.Date.LocalDateTime).Date, data.repository, data.commit))
-		//.Select(data => (data.date, data.repository, data.commit, month: data.date.Month + ":" + data.date.Year))
-		.Select(data => (data.date, data.repository, data.commit, weekYear: WeekYearRules.Iso.GetWeekOfWeekYear(data.date).ToString() + ":" + data.date.Year))
+		.Select(data => (data.date, data.repository, data.commit, pivot: WeekYearRules.Iso.GetWeekOfWeekYear(data.date).ToString() + ":" + data.date.Year))
 		.ToArray()
 		.SelectMany(z => z
-			//.GroupBy(z => z.month)
-			.GroupBy(z => z.weekYear)
+			.GroupBy(z => z.pivot)
 			.SelectMany(group =>
 			{
 				var date = group.MinBy(z => z.date).First().date;
@@ -66,7 +85,7 @@ async Task Main()
 	await c
 	.GroupBy(z =>
 	{
-		if (z.repository.Owner.Login.Equals("RocketSurgeonsGuild", StringComparison.OrdinalIgnoreCase))
+		if (treatOrgAsRepo.Contains(z.repository.Owner.Login))
 		{
 			return (z.date, name: z.repository.Owner.Login, url: z.repository.Owner.HtmlUrl);
 		}
@@ -96,23 +115,25 @@ async Task Main()
 		ReferenceUrl = data.url,
 		AdditionalTechnologies = new List<UserQuery.ContributionTechnologyModel>(),
 	})
-	.Select(data =>
-	{
-		var request = new HttpRequestMessage(HttpMethod.Post, "https://mvpapi.azure-api.net/mvp/api/contributions")
-		{
-			Content = new StringContent(JsonConvert.SerializeObject(data), null, "application/json"),
-		};
-		request.Headers.Add("Ocp-Apim-Subscription-Key", "TODO");
-		request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "TODO");
-		return request;
-	})
-	.Select(request => Observable.FromAsync(ct => httpClient.SendAsync(request, ct)))
-	.Concat()
+	// By default don't send the results so you can manually reivew them before submitting them.
+	//.Select(data =>
+	//{
+	//	var request = new HttpRequestMessage(HttpMethod.Post, "https://mvpapi.azure-api.net/mvp/api/contributions")
+	//	{
+	//		Content = new StringContent(JsonConvert.SerializeObject(data), null, "application/json"),
+	//	};
+	//	request.Headers.Add("Ocp-Apim-Subscription-Key", mvpApiSubscription);
+	//	request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", mvpApiBearerToken);
+	//	return request;
+	//})
+	//.Select(request => Observable.FromAsync(ct => httpClient.SendAsync(request, ct)))
+	//.Concat()
 	.ForEachAsync(async z =>
 	{
 		z.Dump();
-		await z.Content.ReadAsStringAsync().Dump();
-	});
+		//await z.Content.ReadAsStringAsync().Dump();
+	})
+	;
 
 }
 
