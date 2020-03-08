@@ -47,6 +47,9 @@ async Task Main()
 	
 	// These are orgs that you want to group as a one for contribution purposes because they have many repos you work across.
 	var treatOrgAsRepo = new HashSet<string>(new[] { "org-with-many-repos" }, StringComparer.OrdinalIgnoreCase);
+	var contributionType = SampleCode;
+	var contributionTechnology = DotNet;
+	var visibility = MVPVisibility;
 
 	// Script
 	
@@ -103,10 +106,10 @@ async Task Main()
 	.Select(data => new ContributionsModel()
 	{
 		ContributionId = 0,
-		ContributionType = SampleCode,
-		ContributionTechnology = DotNet,
-		Visibility = MVPVisibility,
-		ContributionTypeName = SampleCode.Name,
+		ContributionType = contributionType,
+		ContributionTechnology = contributionTechnology,
+		Visibility = visibility,
+		ContributionTypeName = contributionType.Name,
 		StartDate = data.date.ToDateTimeUnspecified(),
 		Title = $"Contributions to {data.name}",
 		Description = $"Github contributions to {data.name}",
@@ -137,7 +140,7 @@ async Task Main()
 
 }
 
-
+// These lists are not comprehensive and have been copied from the mvp api
 public ContributionTypeModel SampleCode = new ContributionTypeModel()
 {
 	Id = new Guid("e96464de-179a-e411-bbc8-6c3be5a82b68"),
